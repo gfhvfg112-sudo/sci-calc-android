@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#191919" />
+<title>ماشین حساب مهندسی</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<style>
+  :root{
+    --canvas:#191919; --surface:#202020; --raised:#383836;
+    --text:#fff; --text2:rgba(255,255,255,.65); --border:rgba(255,255,255,.20);
+    --blue:#5E9FE8; --blue-soft:rgba(94,159,232,.12);
+    --orange:#DE9255; --green:#72BC8F;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--canvas); color:var(--text);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Arabic",sans-serif;
+    display:flex; justify-content:center; padding:12px;
+  }
+  .app{width:100%; max-width:440px; display:flex; flex-direction:column; gap:12px}
+
+  /* ---------- display ---------- */
+  .screen{
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; display:flex; flex-direction:column; gap:6px;
+  }
+  .topbar{display:flex; align-items:center; gap:8px; min-height:24px}
+  .chip{
+    font-size:12px; letter-spacing:.04em; color:var(--text2);
+    border:1px solid var(--border); border-radius:8px; padding:2px 8px;
+  }
+  .chip.on{color:var(--blue); border-color:var(--blue); background:var(--blue-soft)}
+  .spacer{flex:1}
+  .expr{
+    font-family:Menlo,Consolas,monospace; font-size:14px; color:var(--text2);
+    min-height:20px; direction:ltr; text-align:right; overflow-x:auto; white-space:nowrap;
+    scrollbar-width:none;
+  }
+  .expr::-webkit-scrollbar{display:none}
+  .out{
+    font-family:Menlo,Consolas,monospace; font-weight:600;
+    font-size:34px; line-height:1.2; direction:ltr; text-align:right;
+    overflow-x:auto; white-space:nowrap; scrollbar-width:none;
+  }
+  .out::-webkit-scrollbar{display:none}
+  .out.err{color:#E97366; font-size:20px}
+
+  /* ---------- keypad ---------- */
+  .pad{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; direction:ltr}
+  button{
+    font:inherit; color:var(--text); background:var(--surface);
+    border:1px solid var(--border); border-radius:8px;
+    min-height:52px; font-size:17px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .12s ease, transform .06s ease;
+    padding:0; font-variant-numeric:tabular-nums;
+  }
+  button:active{background:var(--raised); transform:scale(.97)}
+  button:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+  .fn{font-size:15px; color:var(--text2); background:transparent}
+  .fn.active{color:var(--blue); border-color:var(--blue); background:var(--blue-soft)}
+  .op{color:var(--blue)}
+  .warm{color:var(--orange)}
+  .eq{background:var(--blue); border-color:var(--blue); color:#12212f; font-weight:700; font-size:20px}
+  .eq:active{background:#7fb4ee}
+  .num{font-weight:500}
+
+  /* ---------- history ---------- */
+  .hist{
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:12px 16px; display:none; flex-direction:column; gap:10px; max-height:180px; overflow-y:auto;
+  }
+  .hist.show{display:flex}
+  .hist h2{margin:0; font-size:12px; letter-spacing:.06em; color:var(--text2); font-weight:600}
+  .hrow{
+    display:flex; flex-direction:column; gap:2px; direction:ltr; text-align:right;
+    font-family:Menlo,Consolas,monospace; cursor:pointer;
+    border-bottom:1px solid rgba(255,255,255,.07); padding-bottom:8px;
+  }
+  .hrow:last-child{border-bottom:none; padding-bottom:0}
+  .hrow .e{font-size:12px; color:var(--text2)}
+  .hrow .r{font-size:16px}
+  @media (max-width:360px){ button{min-height:46px; font-size:15px} .out{font-size:28px} }
+  @media (prefers-reduced-motion:reduce){ button{transition:none} }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="screen">
+    <div class="topbar">
+      <span class="chip on" id="angleChip">DEG</span>
+      <span class="chip" id="memChip" hidden>M</span>
+      <span class="spacer"></span>
+      <span class="chip" id="histBtn" role="button" tabindex="0">تاریخچه</span>
+    </div>
+    <div class="expr" id="expr">&nbsp;</div>
+    <div class="out" id="out">0</div>
+  </div>
+
+  <div class="hist" id="hist"><h2>محاسبات اخیر</h2><div id="histBody"></div></div>
+
+  <div class="pad" id="pad" dir="ltr">
+    <button class="fn" data-k="2nd">2nd</button>
+    <button class="fn" data-k="deg">DEG</button>
+    <button class="fn" data-k="mc">MC</button>
+    <button class="fn" data-k="mplus">M+</button>
+    <button class="fn" data-k="mr">MR</button>
+
+    <button class="fn" data-k="sin" data-alt="asin">sin</button>
+    <button class="fn" data-k="cos" data-alt="acos">cos</button>
+    <button class="fn" data-k="tan" data-alt="atan">tan</button>
+    <button class="fn" data-k="ln" data-alt="e^">ln</button>
+    <button class="fn" data-k="log" data-alt="10^">log</button>
+
+    <button class="fn" data-k="sqrt" data-alt="cbrt">√</button>
+    <button class="fn" data-k="pow" data-alt="root">xʸ</button>
+    <button class="fn" data-k="sq" data-alt="inv">x²</button>
+    <button class="fn" data-k="fact">n!</button>
+    <button class="fn" data-k="mod">mod</button>
+
+    <button class="fn" data-k="(">(</button>
+    <button class="fn" data-k=")">)</button>
+    <button class="fn" data-k="pi">π</button>
+    <button class="fn" data-k="e">e</button>
+    <button class="fn" data-k="exp">EE</button>
+
+    <button class="warm" data-k="ac">AC</button>
+    <button class="num" data-k="7">7</button>
+    <button class="num" data-k="8">8</button>
+    <button class="num" data-k="9">9</button>
+    <button class="op" data-k="/">÷</button>
+
+    <button class="warm" data-k="del">⌫</button>
+    <button class="num" data-k="4">4</button>
+    <button class="num" data-k="5">5</button>
+    <button class="num" data-k="6">6</button>
+    <button class="op" data-k="*">×</button>
+
+    <button class="fn" data-k="pct">%</button>
+    <button class="num" data-k="1">1</button>
+    <button class="num" data-k="2">2</button>
+    <button class="num" data-k="3">3</button>
+    <button class="op" data-k="-">−</button>
+
+    <button class="fn" data-k="neg">±</button>
+    <button class="num" data-k="0">0</button>
+    <button class="num" data-k=".">.</button>
+    <button class="eq" data-k="=">=</button>
+    <button class="op" data-k="+">+</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var expr = "", deg = true, second = false, mem = 0, hist = [];
+  var $ = function(id){ return document.getElementById(id) };
+  var exprEl = $("expr"), outEl = $("out");
+
+  var PRETTY = {"*":"×","/":"÷","-":"−"};
+  function render(){
+    var shown = expr.replace(/[*\/-]/g, function(c){ return PRETTY[c] });
+    exprEl.innerHTML = shown ? shown.replace(/</g,"&lt;") : "&nbsp;";
+    exprEl.scrollLeft = 0;
+    var v = evaluate(expr);
+    if (expr === "") { outEl.textContent = "0"; outEl.classList.remove("err"); return }
+    if (v.ok){ outEl.textContent = fmt(v.value); outEl.classList.remove("err") }
+    else { outEl.textContent = "…"; outEl.classList.remove("err") }
+  }
+
+  function fmt(n){
+    if (typeof n !== "number" || !isFinite(n)) return "خطا";
+    if (Math.abs(n) < 1e-12 && n !== 0) return n.toExponential(6);
+    var r = Math.round(n * 1e12) / 1e12;
+    if (Math.abs(r) >= 1e15) return r.toExponential(8);
+    var s = String(r);
+    if (s.indexOf("e") === -1 && s.replace("-","").replace(".","").length > 14) s = r.toPrecision(12).replace(/\.?0+$/,"");
+    return s;
+  }
+
+  /* ---------- tokenizer + shunting-yard evaluator (no eval) ---------- */
+  var FUNCS = {
+    sin:function(x){return deg?Math.sin(x*Math.PI/180):Math.sin(x)},
+    cos:function(x){return deg?Math.cos(x*Math.PI/180):Math.cos(x)},
+    tan:function(x){return deg?Math.tan(x*Math.PI/180):Math.tan(x)},
+    asin:function(x){var r=Math.asin(x);return deg?r*180/Math.PI:r},
+    acos:function(x){var r=Math.acos(x);return deg?r*180/Math.PI:r},
+    atan:function(x){var r=Math.atan(x);return deg?r*180/Math.PI:r},
+    ln:Math.log, log:function(x){return Math.log(x)/Math.LN10},
+    sqrt:Math.sqrt, cbrt:Math.cbrt, exp:Math.exp,
+    abs:Math.abs, sinh:Math.sinh, cosh:Math.cosh, tanh:Math.tanh
+  };
+  var OPS = {
+    "+":{p:1,f:function(a,b){return a+b}},
+    "-":{p:1,f:function(a,b){return a-b}},
+    "*":{p:2,f:function(a,b){return a*b}},
+    "/":{p:2,f:function(a,b){return a/b}},
+    "mod":{p:2,f:function(a,b){return a%b}},
+    "^":{p:4,r:true,f:function(a,b){return Math.pow(a,b)}}
+  };
+  function gamma(n){ // factorial via product for integers
+    if (n < 0 || n !== Math.floor(n) || n > 170) return NaN;
+    var r = 1; for (var i=2;i<=n;i++) r*=i; return r;
+  }
+
+  function tokenize(s){
+    var t = [], i = 0;
+    while (i < s.length){
+      var c = s[i];
+      if (c === " "){ i++; continue }
+      if (/[0-9.]/.test(c)){
+        var j = i; while (j < s.length && /[0-9.]/.test(s[j])) j++;
+        t.push({t:"num", v:parseFloat(s.slice(i,j))}); i = j; continue;
+      }
+      var m = s.slice(i).match(/^(mod|asin|acos|atan|sinh|cosh|tanh|sqrt|cbrt|sin|cos|tan|log|ln|exp|abs|pi|e)/);
+      if (m){
+        var w = m[1];
+        if (w === "pi") t.push({t:"num", v:Math.PI});
+        else if (w === "e") t.push({t:"num", v:Math.E});
+        else if (w === "mod") t.push({t:"op", v:"mod"});
+        else t.push({t:"fn", v:w});
+        i += w.length; continue;
+      }
+      if ("+-*/^".indexOf(c) > -1){ t.push({t:"op", v:c}); i++; continue }
+      if (c === "(" || c === ")"){ t.push({t:c}); i++; continue }
+      if (c === "!"){ t.push({t:"fact"}); i++; continue }
+      if (c === "%"){ t.push({t:"pct"}); i++; continue }
+      return null;
+    }
+    return t;
+  }
+
+  function evaluate(s){
+    if (!s) return {ok:false};
+    var t = tokenize(s);
+    if (!t) return {ok:false};
+    // implicit multiplication + unary minus + postfix
+    var out = [], ops = [], prev = null;
+    function popTo(cond){
+      while (ops.length){
+        var top = ops[ops.length-1];
+        if (top === "(") break;
+        if (!cond(top)) break;
+        out.push(ops.pop());
+      }
+    }
+    for (var i=0;i<t.length;i++){
+      var tk = t[i];
+      var isValStart = tk.t === "num" || tk.t === "fn" || tk.t === "(";
+      var prevIsVal = prev && (prev.t === "num" || prev.t === ")" || prev.t === "fact" || prev.t === "pct");
+      if (isValStart && prevIsVal){
+        popTo(function(o){ return OPS[o] && OPS[o].p >= 2 });
+        ops.push("*");
+      }
+      if (tk.t === "num"){ out.push(tk.v) }
+      else if (tk.t === "fn"){ ops.push(tk.v) }
+      else if (tk.t === "("){ ops.push("(") }
+      else if (tk.t === ")"){
+        while (ops.length && ops[ops.length-1] !== "(") out.push(ops.pop());
+        if (!ops.length) return {ok:false};
+        ops.pop();
+        if (ops.length && FUNCS[ops[ops.length-1]]) out.push(ops.pop());
+      }
+      else if (tk.t === "fact"){ out.push("!") }
+      else if (tk.t === "pct"){ out.push("%") }
+      else if (tk.t === "op"){
+        var isUnary = (tk.v === "-" || tk.v === "+") && !prevIsVal;
+        if (isUnary){ ops.push(tk.v === "-" ? "u-" : "u+") }
+        else {
+          var o = OPS[tk.v];
+          if (!o) return {ok:false};
+          popTo(function(top){
+            if (top === "u-" || top === "u+") return true;
+            if (FUNCS[top]) return true;
+            var b = OPS[top]; if (!b) return false;
+            return o.r ? b.p > o.p : b.p >= o.p;
+          });
+          ops.push(tk.v);
+        }
+      }
+      prev = tk;
+    }
+    while (ops.length){ var x = ops.pop(); if (x === "(") return {ok:false}; out.push(x) }
+
+    var st = [];
+    for (var k=0;k<out.length;k++){
+      var o2 = out[k];
+      if (typeof o2 === "number"){ st.push(o2); continue }
+      if (o2 === "!"){ if(!st.length) return {ok:false}; st.push(gamma(st.pop())); continue }
+      if (o2 === "%"){ if(!st.length) return {ok:false}; st.push(st.pop()/100); continue }
+      if (o2 === "u-"){ if(!st.length) return {ok:false}; st.push(-st.pop()); continue }
+      if (o2 === "u+"){ if(!st.length) return {ok:false}; continue }
+      if (FUNCS[o2]){ if(!st.length) return {ok:false}; st.push(FUNCS[o2](st.pop())); continue }
+      if (OPS[o2]){ if (st.length < 2) return {ok:false}; var b2 = st.pop(), a2 = st.pop(); st.push(OPS[o2].f(a2,b2)); continue }
+      return {ok:false};
+    }
+    if (st.length !== 1 || typeof st[0] !== "number" || isNaN(st[0])) return {ok:false};
+    return {ok:true, value:st[0]};
+  }
+
+  /* ---------- input handling ---------- */
+  function add(s){ expr += s; render() }
+
+  function setSecond(v){
+    second = v;
+    document.querySelector('[data-k="2nd"]').classList.toggle("active", second);
+    document.querySelectorAll("[data-alt]").forEach(function(b){
+      var main = b.getAttribute("data-main") || b.textContent;
+      if (!b.getAttribute("data-main")) b.setAttribute("data-main", main);
+      var alt = {asin:"sin⁻¹",acos:"cos⁻¹",atan:"tan⁻¹","e^":"eˣ","10^":"10ˣ",cbrt:"∛",root:"ʏ√x",inv:"1/x"}[b.getAttribute("data-alt")];
+      b.textContent = second ? alt : b.getAttribute("data-main");
+    });
+  }
+
+  function equals(){
+    var v = evaluate(expr);
+    if (!v.ok){ outEl.textContent = "عبارت نامعتبر"; outEl.classList.add("err"); return }
+    var res = fmt(v.value);
+    hist.unshift({e:expr.replace(/[*\/-]/g,function(c){return PRETTY[c]}), r:res});
+    hist = hist.slice(0,20); drawHist();
+    expr = res === "خطا" ? "" : res;
+    render();
+    outEl.textContent = res;
+  }
+
+  function drawHist(){
+    var b = $("histBody"); b.innerHTML = "";
+    hist.forEach(function(h){
+      var d = document.createElement("div");
+      d.className = "hrow"; d.tabIndex = 0;
+      d.innerHTML = '<span class="e"></span><span class="r"></span>';
+      d.children[0].textContent = h.e; d.children[1].textContent = h.r;
+      d.onclick = function(){ expr += h.r; render() };
+      b.appendChild(d);
+    });
+  }
+
+  var ACTIONS = {
+    "ac": function(){ expr = ""; render(); outEl.classList.remove("err") },
+    "del": function(){
+      var m = expr.match(/(asin|acos|atan|sinh|cosh|tanh|sqrt|cbrt|sin|cos|tan|log|ln|exp|mod|pi)\($|(asin|acos|atan|sqrt|cbrt|log|ln|exp|mod|pi)$/);
+      expr = m ? expr.slice(0, expr.length - m[0].length) : expr.slice(0,-1);
+      render();
+    },
+    "=": equals,
+    "deg": function(){ deg = !deg; var c = $("angleChip"); c.textContent = deg ? "DEG" : "RAD"; document.querySelector('[data-k="deg"]').textContent = deg ? "DEG" : "RAD"; render() },
+    "2nd": function(){ setSecond(!second) },
+    "mc": function(){ mem = 0; $("memChip").hidden = true },
+    "mplus": function(){ var v = evaluate(expr); if (v.ok){ mem += v.value; $("memChip").hidden = false; $("memChip").textContent = "M " + fmt(mem) } },
+    "mr": function(){ add(fmt(mem)) },
+    "pi": function(){ add("pi") }, "e": function(){ add("e") },
+    "exp": function(){ add("*10^") },
+    "neg": function(){ add("-") },
+    "pct": function(){ add("%") },
+    "fact": function(){ add("!") },
+    "mod": function(){ add("mod") },
+    "pow": function(){ add(second ? "^(1/" : "^") },
+    "sq": function(){ add(second ? "^(-1)" : "^2") },
+    "sqrt": function(){ add(second ? "cbrt(" : "sqrt(") },
+    "sin": function(){ add(second ? "asin(" : "sin(") },
+    "cos": function(){ add(second ? "acos(" : "cos(") },
+    "tan": function(){ add(second ? "atan(" : "tan(") },
+    "ln": function(){ add(second ? "exp(" : "ln(") },
+    "log": function(){ add(second ? "10^(" : "log(") }
+  };
+
+  $("pad").addEventListener("click", function(ev){
+    var b = ev.target.closest("button"); if (!b) return;
+    var k = b.getAttribute("data-k");
+    if (ACTIONS[k]) ACTIONS[k](); else add(k);
+    if (second && k !== "2nd") setSecond(false);
+  });
+
+  var histOpen = false;
+  function toggleHist(){ histOpen = !histOpen; $("hist").classList.toggle("show", histOpen); $("histBtn").classList.toggle("on", histOpen) }
+  $("histBtn").addEventListener("click", toggleHist);
+  $("histBtn").addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " "){ e.preventDefault(); toggleHist() } });
+
+  document.addEventListener("keydown", function(e){
+    var k = e.key;
+    if (/^[0-9.]$/.test(k)) add(k);
+    else if ("+-*/^()%!".indexOf(k) > -1) add(k);
+    else if (k === "Enter" || k === "=") { e.preventDefault(); equals() }
+    else if (k === "Backspace") { e.preventDefault(); ACTIONS["del"]() }
+    else if (k === "Escape") ACTIONS["ac"]();
+  });
+
+  setSecond(false);
+  render();
+})();
+</script>
+</body>
+</html>

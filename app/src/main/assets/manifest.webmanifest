@@ -1,0 +1,11 @@
+{
+  "name": "ماشین حساب مهندسی",
+  "short_name": "ماشین حساب",
+  "start_url": "index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#191919",
+  "theme_color": "#191919",
+  "lang": "fa",
+  "dir": "rtl"
+}
